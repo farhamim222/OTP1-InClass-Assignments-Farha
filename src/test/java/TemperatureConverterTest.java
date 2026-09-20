@@ -30,4 +30,9 @@ class TemperatureConverterTest {
         assertFalse(converter.isExtremeTemperature(50));
         assertFalse(converter.isExtremeTemperature(20));
     }
-}
+    @Test
+    void kelvinToCelsius() {
+        assertEquals(26.85, converter.kelvinToCelsius(300), 0.001);
+        assertEquals(0.0, converter.kelvinToCelsius(273.15), 0.001);
+        assertEquals(-273.15, converter.kelvinToCelsius(0), 0.001);
+    }}
