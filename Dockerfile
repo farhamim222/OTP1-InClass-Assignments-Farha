@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     libxrender1 \
     libxi6 \
-    libasound2 \
+    libasound2t64 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pom.xml .
