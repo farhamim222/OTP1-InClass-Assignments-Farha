@@ -28,7 +28,12 @@ public class Main extends Application {
             new ComboBox<>(FXCollections.observableArrayList("Celsius", "Fahrenheit", "Kelvin"));
     private final ComboBox<String> toUnitBox =
             new ComboBox<>(FXCollections.observableArrayList("Celsius", "Fahrenheit", "Kelvin"));
-    private final Label resultLabel = new Label("Result will appear here.");
+    private final Label conversionResultLabel = new Label("Result will appear here.");
+
+    private final TextField speedField = new TextField();
+    private final TextField distanceField = new TextField();
+    private final TextField timeField = new TextField();
+    private final Label databaseResultLabel = new Label("No record saved yet.");
     private final ListView<String> recordsList = new ListView<>();
 
     @Override
@@ -37,44 +42,61 @@ public class Main extends Application {
 
         fromUnitBox.setValue("Celsius");
         toUnitBox.setValue("Fahrenheit");
-        temperatureField.setPromptText("Enter temperature");
 
-        Button convertButton = new Button("Convert");
+        temperatureField.setPromptText("Enter temperature");
+        speedField.setPromptText("e.g. 60");
+        distanceField.setPromptText("e.g. 120");
+        timeField.setPromptText("e.g. 2");
+
+        Button convertButton = new Button("Convert temperature");
         convertButton.setOnAction(event -> convertTemperature());
 
-        Button saveButton = new Button("Save to database");
-        saveButton.setOnAction(event -> saveRecord());
+        Button saveButton = new Button("Save speed/distance/time");
+        saveButton.setOnAction(event -> saveSpeedDistanceTimeRecord());
 
-        Button refreshButton = new Button("Refresh saved records");
+        Button refreshButton = new Button("Refresh records");
         refreshButton.setOnAction(event -> loadRecords());
 
-        GridPane form = new GridPane();
-        form.setHgap(10);
-        form.setVgap(10);
+        GridPane temperatureForm = new GridPane();
+        temperatureForm.setHgap(10);
+        temperatureForm.setVgap(10);
+        temperatureForm.add(new Label("Temperature:"), 0, 0);
+        temperatureForm.add(temperatureField, 1, 0);
+        temperatureForm.add(new Label("From:"), 0, 1);
+        temperatureForm.add(fromUnitBox, 1, 1);
+        temperatureForm.add(new Label("To:"), 0, 2);
+        temperatureForm.add(toUnitBox, 1, 2);
 
-        form.add(new Label("Temperature:"), 0, 0);
-        form.add(temperatureField, 1, 0);
-        form.add(new Label("From:"), 0, 1);
-        form.add(fromUnitBox, 1, 1);
-        form.add(new Label("To:"), 0, 2);
-        form.add(toUnitBox, 1, 2);
+        GridPane databaseForm = new GridPane();
+        databaseForm.setHgap(10);
+        databaseForm.setVgap(10);
+        databaseForm.add(new Label("Speed (km/h):"), 0, 0);
+        databaseForm.add(speedField, 1, 0);
+        databaseForm.add(new Label("Distance (km):"), 0, 1);
+        databaseForm.add(distanceField, 1, 1);
+        databaseForm.add(new Label("Time (hours):"), 0, 2);
+        databaseForm.add(timeField, 1, 2);
 
-        HBox buttons = new HBox(10, convertButton, saveButton, refreshButton);
+        HBox databaseButtons = new HBox(10, saveButton, refreshButton);
 
         VBox root = new VBox(
                 15,
                 new Label("Temperature Converter"),
-                form,
-                buttons,
-                resultLabel,
-                new Label("Saved temperature records:"),
+                temperatureForm,
+                convertButton,
+                conversionResultLabel,
+                new Label("Speed, Distance and Time Database"),
+                databaseForm,
+                databaseButtons,
+                databaseResultLabel,
+                new Label("Saved records:"),
                 recordsList
         );
-        root.setPadding(new Insets(20));
 
+        root.setPadding(new Insets(20));
         loadRecords();
 
-        Scene scene = new Scene(root, 520, 500);
+        Scene scene = new Scene(root, 650, 700);
         stage.setTitle("Temperature Converter");
         stage.setScene(scene);
         stage.show();
@@ -83,9 +105,9 @@ public class Main extends Application {
     private void convertTemperature() {
         try {
             double input = Double.parseDouble(temperatureField.getText());
-            double result = convert(input, fromUnitBox.getValue(), toUnitBox.getValue());
+            double result = convertTemperatureValue(input, fromUnitBox.getValue(), toUnitBox.getValue());
 
-            resultLabel.setText(String.format(
+            conversionResultLabel.setText(String.format(
                     "%.2f %s = %.2f %s",
                     input,
                     fromUnitBox.getValue(),
@@ -93,11 +115,11 @@ public class Main extends Application {
                     toUnitBox.getValue()
             ));
         } catch (NumberFormatException exception) {
-            showError("Please enter a valid number.");
+            showError("Please enter a valid temperature number.");
         }
     }
 
-    private double convert(double value, String from, String to) {
+    public static double convertTemperatureValue(double value, String from, String to) {
         double celsius;
 
         switch (from) {
@@ -116,24 +138,21 @@ public class Main extends Application {
     }
 
     private void createDatabase() {
-        String unitTable = """
-                CREATE TABLE IF NOT EXISTS temperature_units (
+        String sessionsTable = """
+                CREATE TABLE IF NOT EXISTS activity_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    symbol TEXT NOT NULL
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
                 """;
 
-        String recordTable = """
-                CREATE TABLE IF NOT EXISTS temperature_records (
+        String recordsTable = """
+                CREATE TABLE IF NOT EXISTS speed_distance_time_records (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    input_value REAL NOT NULL,
-                    from_unit_id INTEGER NOT NULL,
-                    to_unit_id INTEGER NOT NULL,
-                    result_value REAL NOT NULL,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (from_unit_id) REFERENCES temperature_units(id),
-                    FOREIGN KEY (to_unit_id) REFERENCES temperature_units(id)
+                    session_id INTEGER NOT NULL,
+                    speed_kmh REAL NOT NULL,
+                    distance_km REAL NOT NULL,
+                    time_hours REAL NOT NULL,
+                    FOREIGN KEY (session_id) REFERENCES activity_sessions(id)
                 )
                 """;
 
@@ -141,75 +160,73 @@ public class Main extends Application {
              Statement statement = connection.createStatement()) {
 
             statement.execute("PRAGMA foreign_keys = ON");
-            statement.execute(unitTable);
-            statement.execute(recordTable);
-
-            statement.executeUpdate(
-                    "INSERT OR IGNORE INTO temperature_units(name, symbol) VALUES " +
-                            "('Celsius', '°C'), " +
-                            "('Fahrenheit', '°F'), " +
-                            "('Kelvin', 'K')"
-            );
+            statement.execute(sessionsTable);
+            statement.execute(recordsTable);
         } catch (Exception exception) {
             showError("Database could not be created: " + exception.getMessage());
         }
     }
 
-    private void saveRecord() {
+    private void saveSpeedDistanceTimeRecord() {
         try {
-            double input = Double.parseDouble(temperatureField.getText());
-            double result = convert(input, fromUnitBox.getValue(), toUnitBox.getValue());
+            double speed = Double.parseDouble(speedField.getText());
+            double distance = Double.parseDouble(distanceField.getText());
+            double time = Double.parseDouble(timeField.getText());
 
-            String sql = """
-                    INSERT INTO temperature_records
-                    (input_value, from_unit_id, to_unit_id, result_value)
-                    VALUES (?, ?, ?, ?)
-                    """;
-
-            try (Connection connection = DriverManager.getConnection(DATABASE_URL);
-                 PreparedStatement statement = connection.prepareStatement(sql)) {
-
-                statement.setDouble(1, input);
-                statement.setInt(2, getUnitId(connection, fromUnitBox.getValue()));
-                statement.setInt(3, getUnitId(connection, toUnitBox.getValue()));
-                statement.setDouble(4, result);
-                statement.executeUpdate();
+            if (speed < 0 || distance < 0 || time <= 0) {
+                showError("Speed and distance must be 0 or more. Time must be greater than 0.");
+                return;
             }
 
+            try (Connection connection = DriverManager.getConnection(DATABASE_URL)) {
+                connection.setAutoCommit(false);
+
+                int sessionId;
+                try (PreparedStatement sessionStatement = connection.prepareStatement(
+                        "INSERT INTO activity_sessions DEFAULT VALUES",
+                        Statement.RETURN_GENERATED_KEYS)) {
+
+                    sessionStatement.executeUpdate();
+
+                    try (ResultSet generatedKeys = sessionStatement.getGeneratedKeys()) {
+                        generatedKeys.next();
+                        sessionId = generatedKeys.getInt(1);
+                    }
+                }
+
+                String sql = """
+                        INSERT INTO speed_distance_time_records
+                        (session_id, speed_kmh, distance_km, time_hours)
+                        VALUES (?, ?, ?, ?)
+                        """;
+
+                try (PreparedStatement recordStatement = connection.prepareStatement(sql)) {
+                    recordStatement.setInt(1, sessionId);
+                    recordStatement.setDouble(2, speed);
+                    recordStatement.setDouble(3, distance);
+                    recordStatement.setDouble(4, time);
+                    recordStatement.executeUpdate();
+                }
+
+                connection.commit();
+            }
+
+            databaseResultLabel.setText("Speed, distance and time record saved successfully.");
             loadRecords();
-            resultLabel.setText("Record saved successfully.");
         } catch (NumberFormatException exception) {
-            showError("Please enter a valid number before saving.");
+            showError("Please enter valid numbers for speed, distance and time.");
         } catch (Exception exception) {
             showError("Record could not be saved: " + exception.getMessage());
         }
-    }
-
-    private int getUnitId(Connection connection, String unitName) throws Exception {
-        String sql = "SELECT id FROM temperature_units WHERE name = ?";
-
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, unitName);
-
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return resultSet.getInt("id");
-                }
-            }
-        }
-
-        throw new Exception("Temperature unit not found.");
     }
 
     private void loadRecords() {
         recordsList.getItems().clear();
 
         String sql = """
-                SELECT r.input_value, r.result_value, r.created_at,
-                       f.symbol AS from_symbol, t.symbol AS to_symbol
-                FROM temperature_records r
-                JOIN temperature_units f ON r.from_unit_id = f.id
-                JOIN temperature_units t ON r.to_unit_id = t.id
+                SELECT r.speed_kmh, r.distance_km, r.time_hours, s.created_at
+                FROM speed_distance_time_records r
+                JOIN activity_sessions s ON r.session_id = s.id
                 ORDER BY r.id DESC
                 """;
 
@@ -219,11 +236,10 @@ public class Main extends Application {
 
             while (resultSet.next()) {
                 recordsList.getItems().add(String.format(
-                        "%.2f %s = %.2f %s  |  %s",
-                        resultSet.getDouble("input_value"),
-                        resultSet.getString("from_symbol"),
-                        resultSet.getDouble("result_value"),
-                        resultSet.getString("to_symbol"),
+                        "Speed: %.2f km/h | Distance: %.2f km | Time: %.2f h | %s",
+                        resultSet.getDouble("speed_kmh"),
+                        resultSet.getDouble("distance_km"),
+                        resultSet.getDouble("time_hours"),
                         resultSet.getString("created_at")
                 ));
             }
